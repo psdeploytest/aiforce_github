@@ -1,0 +1,487 @@
+Got it, Arun! Below is a secure, production‑ready Python script that uses the GitHub REST API to:
+
+*   Authenticate with a token (via `--token` or `GITHUB_TOKEN` env var — env var preferred).
+*   Fetch code files from a repository and save them locally for editing.
+*   Let you modify them (opens your `$EDITOR`, or you can pass `--no-editor` and modify the temp files yourself).
+*   Push all changes back in **a single commit** using the Git Data API (robust, best practice for multi-file commits).
+*   Includes resilient error handling, rate-limit awareness, and clear logging.
+
+> ⚙️ **Token scope**: Ensure your token has the `repo` scope (private repos) or appropriate scopes for your use case.  
+> 📝 **Branch protection**: If the target branch is protected, direct updates may be blocked.
+
+***
+
+## 🔒 Security & Robustness Highlights
+
+*   **No hardcoded secrets**: Reads token from `GITHUB_TOKEN` env var by default.
+*   **Minimal token exposure**: Sanitized logging; never prints token.
+*   **Retries & backoff**: Handles transient network/API errors gracefully.
+*   **Single commit for multiple files**: Uses Git Data API (`/git/blobs`, `/git/trees`, `/git/commits`, `/git/refs`).
+*   **Safe editing flow**: Writes originals to a temp dir and only commits changed files.
+*   **Binary safety**: Skips non-text files when using the editor and warns appropriately.
+
+***
+
+## 📜 The Script
+
+> Save as: `github_update_files.py`  
+> Requires: `requests` (`pip install requests`)
+
+```python
+#!/usr/bin/env python3
+"""
+Secure multi-file update to a GitHub repository via REST API.
+
+- Auth via GITHUB_TOKEN env var or --token argument
+- Fetches specified code files from a repo and writes them to a temp directory
+- Optionally opens them in your $EDITOR for modification
+- Commits all changed files back to the repo in a single commit using Git Data API
+
+Usage example:
+    python github_update_files.py \
+      --github-url "https://github.com/owner/repo" \
+      --file-path "src/app.py" --file-path "README.md" \
+      --commit-message "Refactor app and update README" \
+      --branch "main"
+
+Author: M365 Copilot
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import logging
+import os
+import sys
+import time
+import tempfile
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import requests
+
+# ---------- Logging Configuration ----------
+logger = logging.getLogger("github_updater")
+handler = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter(
+    fmt="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+
+# ---------- Utility Functions ----------
+def parse_github_url(url: str) -> Tuple[str, str]:
+    """
+    Parse owner/repo from a GitHub URL.
+    Accepts formats like:
+        https://github.com/owner/repo
+        git@github.com:owner/repo.git
+        owner/repo
+    """
+    u = url.strip()
+    if u.startswith("git@github.com:"):
+        u = u.replace("git@github.com:", "https://github.com/")
+    if u.startswith("https://github.com/"):
+        parts = u[len("https://github.com/") :].split("/")
+    else:
+        parts = u.split("/")
+    parts = [p for p in parts if p]  # remove empties
+    owner, repo = parts[0], parts[1]
+    repo = repo.replace(".git", "")
+    return owner, repo
+
+
+def is_text_content(data: bytes) -> bool:
+    """Heuristic: attempt UTF-8 decode; treat as binary if it fails."""
+    try:
+        data.decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def getenv_token(cli_token: Optional[str]) -> str:
+    token = cli_token or os.getenv("GITHUB_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "GitHub token is required. Set env var GITHUB_TOKEN or use --token."
+        )
+    return token
+
+
+def backoff_sleep(attempt: int):
+    """Exponential backoff with jitter."""
+    delay = min(2 ** attempt, 15) + (0.1 * attempt)
+    time.sleep(delay)
+
+
+# ---------- GitHub Client ----------
+class GitHubClient:
+    def __init__(self, token: str, owner: str, repo: str):
+        self.token = token
+        self.owner = owner
+        self.repo = repo
+        self.base_url = f"https://api.github.com/repos/{owner}/{repo}"
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "M365-Copilot-GitHub-Updater",
+            }
+        )
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Optional[dict] = None,
+        json_body: Optional[dict] = None,
+        ok_statuses: Tuple[int, ...] = (200, 201),
+        max_retries: int = 5,
+    ) -> requests.Response:
+        for attempt in range(max_retries):
+            try:
+                resp = self.session.request(
+                    method, url, params=params, json=json_body, timeout=30
+                )
+            except requests.RequestException as e:
+                logger.warning(f"Network error: {e}. Retrying...")
+                backoff_sleep(attempt)
+                continue
+
+            # Rate limiting & retryable statuses
+            if resp.status_code in (429, 502, 503, 504):
+                logger.warning(
+                    f"GitHub returned {resp.status_code}. Retrying with backoff..."
+                )
+                backoff_sleep(attempt)
+                continue
+
+            # Informative logs for rate limit nearing
+            rl = {
+                "limit": resp.headers.get("X-RateLimit-Limit"),
+                "remaining": resp.headers.get("X-RateLimit-Remaining"),
+                "reset": resp.headers.get("X-RateLimit-Reset"),
+            }
+            if rl["remaining"] is not None and rl["limit"] is not None:
+                try:
+                    remaining = int(rl["remaining"])
+                    limit = int(rl["limit"])
+                    if remaining <= max(1, int(0.05 * limit)):
+                        logger.info(
+                            f"Rate limit low: {remaining}/{limit}. Consider slowing down."
+                        )
+                except ValueError:
+                    pass
+
+            if resp.status_code in ok_statuses:
+                return resp
+
+            # Non-OK: surface informative error
+            try:
+                payload = resp.json()
+            except ValueError:
+                payload = {"message": resp.text}
+            msg = payload.get("message", "Unknown error")
+            if resp.status_code == 403 and "rate limit" in msg.lower():
+                reset = rl["reset"]
+                logger.error(
+                    f"Rate limit exceeded. Resets at epoch {reset}. Aborting."
+                )
+                raise RuntimeError(msg)
+
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Unexpected status {resp.status_code}: {msg}. Retrying..."
+                )
+                backoff_sleep(attempt)
+                continue
+
+            # Final failure
+            raise RuntimeError(f"GitHub API error {resp.status_code}: {msg}")
+
+    # ----- Repo & Branch -----
+    def get_default_branch(self) -> str:
+        url = self.base_url
+        resp = self._request("GET", url)
+        repo_info = resp.json()
+        return repo_info["default_branch"]
+
+    def get_ref(self, branch: str) -> dict:
+        url = f"{self.base_url}/git/ref/heads/{branch}"
+        resp = self._request("GET", url)
+        return resp.json()
+
+    # ----- Contents API -----
+    def get_file_content(self, path: str, ref: str) -> Tuple[bytes, str]:
+        """
+        Returns (decoded_bytes, blob_sha).
+        If file does not exist, raises RuntimeError.
+        """
+        url = f"{self.base_url}/contents/{path}"
+        resp = self._request("GET", url, params={"ref": ref})
+        data = resp.json()
+        if data.get("type") != "file":
+            raise RuntimeError(f"Path '{path}' is not a file (type={data.get('type')}).")
+        content_b64 = data["content"]
+        blob_sha = data["sha"]
+        decoded = base64.b64decode(content_b64)
+        return decoded, blob_sha
+
+    # ----- Git Data API for multi-file commit -----
+    def get_commit(self, sha: str) -> dict:
+        url = f"{self.base_url}/git/commits/{sha}"
+        resp = self._request("GET", url)
+        return resp.json()
+
+    def get_tree(self, sha: str) -> dict:
+        url = f"{self.base_url}/git/trees/{sha}"
+        resp = self._request("GET", url, params={"recursive": 1})
+        return resp.json()
+
+    def create_blob(self, content: bytes) -> str:
+        """
+        Creates a blob and returns its sha.
+        Always encodes as UTF-8 text; for binary content, base64-encodes.
+        """
+        is_text = is_text_content(content)
+        if is_text:
+            payload = {"content": content.decode("utf-8"), "encoding": "utf-8"}
+        else:
+            payload = {"content": base64.b64encode(content).decode("ascii"), "encoding": "base64"}
+        url = f"{self.base_url}/git/blobs"
+        resp = self._request("POST", url, json_body=payload, ok_statuses=(201,))
+        return resp.json()["sha"]
+
+    def create_tree(self, base_tree_sha: str, changes: List[dict]) -> str:
+        """
+        changes: list of tree entries:
+            {"path": "file/path", "mode": "100644", "type": "blob", "sha": "<blob_sha>"}
+        Returns new tree sha.
+        """
+        url = f"{self.base_url}/git/trees"
+        payload = {"base_tree": base_tree_sha, "tree": changes}
+        resp = self._request("POST", url, json_body=payload, ok_statuses=(201,))
+        return resp.json()["sha"]
+
+    def create_commit(self, message: str, tree_sha: str, parent_sha: str) -> str:
+        url = f"{self.base_url}/git/commits"
+        payload = {"message": message, "tree": tree_sha, "parents": [parent_sha]}
+        resp = self._request("POST", url, json_body=payload, ok_statuses=(201,))
+        return resp.json()["sha"]
+
+    def update_ref(self, branch: str, commit_sha: str, force: bool = False) -> None:
+        url = f"{self.base_url}/git/refs/heads/{branch}"
+        payload = {"sha": commit_sha, "force": force}
+        self._request("PATCH", url, json_body=payload, ok_statuses=(200,))
+
+    # ----- Helper: Fetch file if exists; else treat as new file -----
+    def fetch_existing_or_new(self, path: str, ref: str) -> Tuple[Optional[bytes], Optional[str]]:
+        """
+        Returns (content_bytes_or_None, blob_sha_or_None).
+        If path doesn't exist, returns (None, None) to indicate new file creation.
+        """
+        try:
+            return self.get_file_content(path, ref)
+        except RuntimeError as e:
+            msg = str(e).lower()
+            if "not found" in msg or "404" in msg:
+                logger.info(f"File '{path}' not found on branch '{ref}'. Will create new.")
+                return None, None
+            raise
+
+
+# ---------- Editor Flow ----------
+def open_in_editor(file_path: Path) -> None:
+    editor = os.getenv("EDITOR")
+    if not editor:
+        # Fallback: try sensible defaults
+        if os.name == "nt":
+            editor = "notepad"
+        else:
+            editor = "vi"
+        logger.info(f"$EDITOR not set, using default editor: {editor}")
+    try:
+        subprocess.run([editor, str(file_path)], check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Editor exited with non-zero status: {e.returncode}")
+        raise
+
+
+# ---------- Main Workflow ----------
+def main():
+    parser = argparse.ArgumentParser(
+        description="Fetch, modify, and push updates to GitHub repo files securely."
+    )
+    parser.add_argument("--github-url", required=True, help="E.g., https://github.com/owner/repo")
+    parser.add_argument("--token", required=False, help="GitHub Personal Access Token (PAT). Prefer GITHUB_TOKEN env var.")
+    parser.add_argument("--file-path", action="append", required=True,
+                        help="Repo-relative file path to fetch and update. Repeat for multiple files.")
+    parser.add_argument("--commit-message", required=True, help="Commit message to use for the changes.")
+    parser.add_argument("--branch", required=False, help="Target branch. Defaults to repo's default branch.")
+    parser.add_argument("--no-editor", action="store_true", help="Do not open editor; modify temp files manually before confirmation.")
+    parser.add_argument("--force", action="store_true", help="Force update ref (use cautiously; bypasses fast-forward).")
+
+    args = parser.parse_args()
+
+    # Resolve token securely
+    token = getenv_token(args.token)
+
+    # Parse owner/repo
+    owner, repo = parse_github_url(args.github_url)
+    logger.info(f"Target repository: {owner}/{repo}")
+
+    gh = GitHubClient(token, owner, repo)
+
+    # Determine branch
+    branch = args.branch or gh.get_default_branch()
+    logger.info(f"Working branch: {branch}")
+
+    # Get current HEAD commit and base tree
+    ref_info = gh.get_ref(branch)
+    head_sha = ref_info["object"]["sha"]
+    head_commit = gh.get_commit(head_sha)
+    base_tree_sha = head_commit["tree"]["sha"]
+
+    # Prepare temp workspace
+    tmp_root = Path(tempfile.mkdtemp(prefix="gh-update-"))
+    logger.info(f"Temp working directory: {tmp_root}")
+
+    original_bytes_map: Dict[str, Optional[bytes]] = {}
+    temp_file_map: Dict[str, Path] = {}
+
+    # Fetch files (existing or new)
+    for repo_path in args.file_path:
+        content_bytes, blob_sha = gh.fetch_existing_or_new(repo_path, branch)
+        original_bytes_map[repo_path] = content_bytes
+
+        local_path = tmp_root / repo_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if content_bytes is None:
+            # New file: create empty skeleton
+            logger.info(f"Initializing new file: {repo_path}")
+            content_bytes = b""
+        local_path.write_bytes(content_bytes)
+        temp_file_map[repo_path] = local_path
+
+    # Allow modifications
+    if not args.no_editor:
+        for repo_path, local_path in temp_file_map.items():
+            # Only open text files to avoid garbled binary editing
+            data = local_path.read_bytes()
+            if is_text_content(data):
+                logger.info(f"Opening in editor: {repo_path}")
+                open_in_editor(local_path)
+            else:
+                logger.warning(f"Skipping editor for binary-like file: {repo_path}. You may replace the file manually in {local_path}")
+
+    # Read back and determine changes
+    changes: List[dict] = []  # entries for tree
+    changed_count = 0
+
+    for repo_path, local_path in temp_file_map.items():
+        new_bytes = local_path.read_bytes()
+        old_bytes = original_bytes_map[repo_path]
+
+        if old_bytes == new_bytes:
+            logger.info(f"No changes detected for: {repo_path}")
+            continue
+
+        # Create blob for new content
+        new_blob_sha = gh.create_blob(new_bytes)
+        # Mode: "100644" for normal files, "100755" if executable. We keep 100644 for code files.
+        changes.append(
+            {"path": repo_path, "mode": "100644", "type": "blob", "sha": new_blob_sha}
+        )
+        changed_count += 1
+        logger.info(f"Staged change for: {repo_path}")
+
+    if changed_count == 0:
+        logger.info("No changes to commit. Exiting.")
+        return
+
+    # Create new tree based on base tree with changes
+    new_tree_sha = gh.create_tree(base_tree_sha, changes)
+    # Create commit
+    commit_sha = gh.create_commit(args.commit_message, new_tree_sha, head_sha)
+    # Update ref
+    gh.update_ref(branch, commit_sha, force=args.force)
+
+    commit_url = f"https://github.com/{owner}/{repo}/commit/{commit_sha}"
+    logger.info(f"✅ Successfully committed {changed_count} file(s).")
+    logger.info(f"Commit URL: {commit_url}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        logger.error(f"Failed: {e}")
+        sys.exit(1)
+```
+
+***
+
+## ▶️ How to Run
+
+1.  **Install dependencies**:
+    ```bash
+    pip install requests
+    ```
+
+2.  **Export your token securely**:
+    ```bash
+    export GITHUB_TOKEN="{{api_token}}"
+    # For Windows (PowerShell):
+    # $env:GITHUB_TOKEN="{{api_token}}"
+    ```
+
+3.  **Run the script** (replace placeholders):
+    ```bash
+    python github_update_files.py \
+      --github-url "{{github_url}}" \
+      --file-path "{{file_paths}}" \
+      --commit-message "{{commit_message}}"
+    ```
+    *   Repeat `--file-path` for multiple files:
+        ```bash
+        --file-path "src/app.py" --file-path "README.md"
+        ```
+    *   To target a specific branch:
+        ```bash
+        --branch "main"
+        ```
+    *   To skip opening the editor (you can manually edit temp files in the printed directory):
+        ```bash
+        --no-editor
+        ```
+
+***
+
+## 🔧 Notes & Best Practices
+
+*   **Token scope**: For private repos, use `repo` scope. For editing GitHub Actions workflows, you may need `workflow`.
+*   **Branch protection**: If branch is protected, direct commits may fail — use a feature branch + PR flow.
+*   **Single vs multi-file commits**: This script produces **one commit** for all changed files. If you prefer one commit per file, switch to the `/contents` endpoint in a loop (I can provide a variant).
+*   **Binary files**: The editor step is skipped for binary-like content, but they can still be committed programmatically.
+*   **Auditing**: All API interactions are logged (without secrets). Consider rotating tokens periodically.
+
+***
+
+## Want a `/contents` API variant?
+
+If you specifically want per-file updates using `PUT /repos/{owner}/{repo}/contents/{path}` (simpler, one commit per file), I can generate that too. It’s great for small changes but doesn’t batch multiple files into a single commit.
+
+***
+
+If you'd like, I can tailor this for your team’s workflow (e.g., feature branch creation, PR auto-opening, reviewer assignment, or CI checks).
