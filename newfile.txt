@@ -1,0 +1,27 @@
+Created by: Anita Varma
+Creation date: 21-05-2021
+
+2021-05-21     V0.01      Anita Varma                       Initial release
+2023-01-26     V0.02    jan van der laan              Copied this for EWM_MDM</Property>
+         <Property Name="JobVersion">56.0.0</Property>
+         <Property Name="JobControlCode" PreFormatted="1">* Tokens were replaced below as follows:
+* IdV1S0%%Param%%0 &lt;= XHD_XG_DM_MPSCR_EWM_MDM_JP_MDM_COVER_PROVIDER_load.$ErrSource
+* IdV1S0%%Param%%1 &lt;= XHD_XG_DM_MPSCR_EWM_MDM_JP_MDM_COVER_PROVIDER_load.$ErrNumber
+* IdV1S0%%Param%%2 &lt;= XHD_XG_DM_MPSCR_EWM_MDM_JP_MDM_COVER_PROVIDER_load.$ErrMessage
+* IdV0S18%%Result2%%3 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_COVER_PROVIDER_UPD_DEL.$UserStatus
+* IdV0S18%%Result1%%4 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_COVER_PROVIDER_UPD_DEL.$JobStatus
+* IdV0S18%%Name%%5 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_COVER_PROVIDER_UPD_DEL.$JobName
+* IdV0S32%%Result2%%6 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_STAGE_COVER_PROVIDER.$UserStatus
+* IdV0S32%%Result1%%7 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_STAGE_COVER_PROVIDER.$JobStatus
+* IdV0S32%%Name%%8 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_STAGE_COVER_PROVIDER.$JobName
+* IdV0S33%%Result2%%9 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_COVER_PROVIDER_INSERT.$UserStatus
+* IdV0S33%%Result1%%10 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_COVER_PROVIDER_INSERT.$JobStatus
+* IdV0S33%%Name%%11 &lt;= XJS_XG_DM_MPSCR_JP_EWM_MDM_COVER_PROVIDER_INSERT.$JobName
+*
+*** [Generated at 2025-01-14 17:49:58 - 11.7.1.0]
+   $INCLUDE DSINCLUDE DSJ_XFUNCS.H
+   Deffun F0053v00001rtrGenerateRunId(a1,a2,a3,a4,a5) Calling 'DSU.F0053v00001rtrGenerateRunId'
+   EQU Time$$ Lit "Oconv(Time(), 'MTS:'):': '"
+****************************************
+* Graphical Sequencer generated code for Job XG_DM_MPSCR_EWM_MDM_SQ_MDM_COVER_PROVIDER
+****************************************
