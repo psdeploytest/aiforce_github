@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: EWM_MDM_STAGE_TXN_FCY_RK_UNION
+    description: "DBT model for EWM_MDM_STAGE_TXN_FCY_RK_UNION"
+    columns:
+      - name: EV_ID
+        description: "Column EV_ID"
+      - name: MSTR_SRC_STM_CD
+        description: "Column MSTR_SRC_STM_CD"
+      - name: MSTR_SRC_STM_KEY
+        description: "Column MSTR_SRC_STM_KEY"
+      - name: VLD_FROM_TMS
+        description: "Column VLD_FROM_TMS"
+      - name: VLD_TO_TMS
+        description: "Column VLD_TO_TMS"
+      - name: PRIM_AR_ID
+        description: "Column PRIM_AR_ID"
+      - name: FCY_RK
+        description: "Column FCY_RK"
+      - name: TXN_BOOK_DT
+        description: "Column TXN_BOOK_DT"
+      - name: TXN_CCY_AMT
+        description: "Column TXN_CCY_AMT"
+      - name: TXN_CCY_CL_CD
+        description: "Column TXN_CCY_CL_CD"
+      - name: TXN_RSN_TP_CL_CD
+        description: "Column TXN_RSN_TP_CL_CD"
+      - name: LDGR_CCY_AMT
+        description: "Column LDGR_CCY_AMT"
+      - name: LDGR_CCY_CL_CD
+        description: "Column LDGR_CCY_CL_CD"
+      - name: SRC_DL
+        description: "Column SRC_DL"
+      - name: DATA_DT
+        description: "Column DATA_DT"
+      - name: SYS_INRT_TMS
+        description: "Column SYS_INRT_TMS"
+    tags: 
+      - ewm
+      - mdm
+      - stage
+      - txn
+      - fcy
+      - rk
+      - union
+    meta:
+      materialization: table
+    unique_key:
+      - PRIM_AR_ID
+      - FCY_RK
+      - SRC_DL
+      - MSTR_SRC_STM_KEY
