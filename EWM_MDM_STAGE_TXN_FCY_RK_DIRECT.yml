@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: EWM_MDM_STAGE_TXN_FCY_RK_DIRECT
+    description: "DBT model for EWM_MDM_STAGE_TXN_FCY_RK_DIRECT"
+    columns:
+      - name: SRC_DL
+        description: "Source DL"
+      - name: EV_ID
+        description: "Event ID"
+      - name: MSTR_SRC_STM_CD
+        description: "Master Source STM Code"
+      - name: MSTR_SRC_STM_KEY
+        description: "Master Source STM Key"
+      - name: VLD_FROM_TMS
+        description: "Valid From Timestamp"
+      - name: VLD_TO_TMS
+        description: "Valid To Timestamp"
+      - name: PRIM_AR_ID
+        description: "Primary AR ID"
+      - name: TXN_BOOK_DT
+        description: "Transaction Book Date"
+      - name: TXN_CCY_AMT
+        description: "Transaction Currency Amount"
+      - name: TXN_CCY_CL_CD
+        description: "Transaction Currency Classification Code"
+      - name: TXN_RSN_TP_CL_CD
+        description: "Transaction Reason Type Classification Code"
+      - name: LDGR_CCY_AMT
+        description: "Ledger Currency Amount"
+      - name: LDGR_CCY_CL_CD
+        description: "Ledger Currency Classification Code"
+      - name: FCY_RK
+        description: "FCY RK"
+      - name: SYS_INRT_TMS
+        description: "System Insert Timestamp"
+      - name: DATA_DT
+        description: "Data Date"
+    tags:
+      - EWM
+      - MDM
+      - STAGE
+      - TXN
+      - FCY
+      - RK
+      - DIRECT
+    meta:
+      materialization: table
+      unique_keys:
+        - SRC_DL
+        - PRIM_AR_ID
+        - FCY_RK
+        - MSTR_SRC_STM_KEY

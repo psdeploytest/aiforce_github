@@ -1,0 +1,93 @@
+WITH ORA_read_EWM_EV_TXN_V AS (
+    SELECT
+        SRC_DL,
+        EV_ID,
+        MSTR_SRC_STM_CD,
+        MSTR_SRC_STM_KEY,
+        VLD_FROM_TMS,
+        VLD_TO_TMS,
+        PRIM_AR_ID,
+        TXN_BOOK_DT,
+        TXN_CCY_AMT,
+        TXN_CCY_CL_CD,
+        TXN_RSN_TP_CL_CD,
+        LDGR_CCY_AMT,
+        LDGR_CCY_CL_CD
+    FROM
+        EWM_EV_TXN_V
+    WHERE
+        SRC_DL = 'DL_DE'
+        AND TXN_RSN_TP_CL_CD IN (
+            'FEE_CMSN_PYMT', 'INT_PYMT', 'PNP_PYMT', 'PST_RSL_PYMT', 'TCNQL_PYMT', 'FNC_SVC_PYMT',
+            'ADL_WRKOUT_COST', 'ADMIN_RCVR_COST', 'EXT_COST', 'FEE_CMSN_CHRG', 'INT_CHRG',
+            'LGL_COST', 'LQD_COST', 'PST_RSL_COST', 'TCNQL_ADVNC_PYMT', 'PNP_ADVNC', 'FNC_SVC_CHRG',
+            'WRT_OFF', 'FNC_CLM', 'AGRM_NET_SALE'
+        )
+        AND VLD_FROM_TMS <= TO_DATE('20240516000000', 'YYYYMMDDHH24MISS')
+        AND TO_DATE('20240516000000', 'YYYYMMDDHH24MISS') < VLD_TO_TMS
+),
+ORA_read_EWM_MDM_STAGE_TRANSACTION_FCY AS (
+    SELECT
+        SRC_DL,
+        AR_ID AS PRIM_AR_ID,
+        FCY_RK,
+        DATA_DT
+    FROM
+        EWM_MDM_STAGE_TRANSACTION_FCY
+    WHERE
+        DATA_DT = TO_DATE('20240516', 'YYYYMMDD')
+        AND SRC_DL = 'DL_DE'
+),
+joined_table AS (
+    SELECT
+        EWM_EV_TXN_V.SRC_DL,
+        EWM_EV_TXN_V.EV_ID,
+        EWM_EV_TXN_V.MSTR_SRC_STM_CD,
+        EWM_EV_TXN_V.MSTR_SRC_STM_KEY,
+        EWM_EV_TXN_V.VLD_FROM_TMS,
+        EWM_EV_TXN_V.VLD_TO_TMS,
+        EWM_EV_TXN_V.PRIM_AR_ID,
+        EWM_EV_TXN_V.TXN_BOOK_DT,
+        EWM_EV_TXN_V.TXN_CCY_AMT,
+        EWM_EV_TXN_V.TXN_CCY_CL_CD,
+        EWM_EV_TXN_V.TXN_RSN_TP_CL_CD,
+        EWM_EV_TXN_V.LDGR_CCY_AMT,
+        EWM_EV_TXN_V.LDGR_CCY_CL_CD,
+        EWM_MDM_STAGE_TRANSACTION_FCY.FCY_RK,
+        EWM_MDM_STAGE_TRANSACTION_FCY.DATA_DT
+    FROM
+        ORA_read_EWM_EV_TXN_V
+    INNER JOIN
+        ORA_read_EWM_MDM_STAGE_TRANSACTION_FCY
+    ON
+        EWM_EV_TXN_V.SRC_DL = EWM_MDM_STAGE_TRANSACTION_FCY.SRC_DL
+        AND EWM_EV_TXN_V.PRIM_AR_ID = EWM_MDM_STAGE_TRANSACTION_FCY.PRIM_AR_ID
+),
+deduped_table AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (PARTITION BY SRC_DL, PRIM_AR_ID, FCY_RK, MSTR_SRC_STM_KEY ORDER BY SRC_DL) AS row_num
+    FROM
+        joined_table
+)
+SELECT
+    SRC_DL,
+    EV_ID,
+    MSTR_SRC_STM_CD,
+    MSTR_SRC_STM_KEY,
+    VLD_FROM_TMS,
+    VLD_TO_TMS,
+    PRIM_AR_ID,
+    TXN_BOOK_DT,
+    TXN_CCY_AMT,
+    TXN_CCY_CL_CD,
+    TXN_RSN_TP_CL_CD,
+    LDGR_CCY_AMT,
+    LDGR_CCY_CL_CD,
+    FCY_RK,
+    current_timestamp() AS SYS_INRT_TMS,
+    DATA_DT
+FROM
+    deduped_table
+WHERE
+    row_num = 1;
