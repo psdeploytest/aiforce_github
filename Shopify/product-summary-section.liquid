@@ -1,0 +1,18 @@
+<section>
+  <h1>{{ product.title | escape }}</h1>
+
+  {% if product.available %}
+    <p>{{ product.price | money }}</p>
+    {% if product.compare_at_price > product.price %}
+      <p><s>{{ product.compare_at_price | money }}</s></p>
+    {% endif %}
+  {% else %}
+    <p>Out of stock</p>
+  {% endif %}
+
+  <div class="product-images">
+    {% for image in product.images | slice: 0, 4 %}
+      <img src="{{ image.src | escape }}" alt="{{ image.alt | escape }}">
+    {% endfor %}
+  </div>
+</section>
