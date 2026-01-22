@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testing-service
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: testing-service
+  template:
+    metadata:
+      labels:
+        app: testing-service
+    spec:
+      containers:
+        - name: testing-service
+          image: testing-service:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: postgres://testuser:testpassword@postgres/testdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testing-service
+  namespace: default
+spec:
+  selector:
+    app: testing-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

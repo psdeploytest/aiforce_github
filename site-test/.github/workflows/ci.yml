@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:13
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - name: Install dependencies
+        run: |
+          pip install -r auth_service/requirements.txt
+          pip install -r dashboard_service/requirements.txt
+          pip install -r site_setup_service/requirements.txt
+          pip install -r integration_service/requirements.txt
+          pip install -r deployment_service/requirements.txt
+          pip install -r testing_service/requirements.txt
+          pip install -r tracking_service/requirements.txt
+          pip install -r lifecycle_service/requirements.txt
+          pip install -r readiness_service/requirements.txt

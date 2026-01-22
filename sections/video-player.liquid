@@ -1,0 +1,60 @@
+{% schema %}
+{
+  "name": "video-player",
+  "settings": [
+    {
+      "type": "text",
+      "id": "video_url",
+      "label": "Video URL",
+      "default": ""
+    },
+    {
+      "type": "text",
+      "id": "video_title",
+      "label": "Video Title",
+      "default": ""
+    },
+    {
+      "type": "textarea",
+      "id": "video_description",
+      "label": "Video Description",
+      "default": ""
+    },
+    {
+      "type": "checkbox",
+      "id": "autoplay",
+      "label": "Autoplay",
+      "default": false
+    },
+    {
+      "type": "checkbox",
+      "id": "loop",
+      "label": "Loop",
+      "default": false
+    }
+  ],
+  "presets": [
+    {
+      "name": "Video Player",
+      "category": "Media"
+    }
+  ]
+}
+{% endschema %}
+
+<div class="video-player">
+  {% if section.settings.video_url %}
+    <video 
+      src="{{ section.settings.video_url | escape }}" 
+      {% if section.settings.autoplay %}autoplay{% endif %} 
+      {% if section.settings.loop %}loop{% endif %} 
+      controls>
+    </video>
+    <div class="video-info">
+      <h2>{{ section.settings.video_title | escape }}</h2>
+      <p>{{ section.settings.video_description | escape }}</p>
+    </div>
+  {% else %}
+    <p>No video URL provided.</p>
+  {% endif %}
+</div>

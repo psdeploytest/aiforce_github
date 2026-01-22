@@ -1,0 +1,82 @@
+WITH
+-- CTE for the join operation
+JNO_FCY_AR_LWST_HGHST AS (
+    SELECT
+        LEFT_TABLE.*,
+        RIGHT_TABLE.*
+    FROM
+        LEFT_TABLE
+    LEFT OUTER JOIN
+        RIGHT_TABLE
+    ON
+        LEFT_TABLE.SRC_DL = RIGHT_TABLE.SRC_DL
+        AND LEFT_TABLE.AR_ID = RIGHT_TABLE.AR_ID
+),
+
+-- CTE for the transformation operation
+XFM_HIGHEST_FACILITY AS (
+    SELECT
+        mov_AR_X_R_HIGHEST.HIGHEST_FCY_ID AS AR_ID,
+        'Y' AS HIGHEST_FCY_IN_HRY
+    FROM
+        mov_AR_X_R_HIGHEST
+),
+
+-- CTE for the final projection
+ORA_write_EWM_MDM_STAGE_FACILITY AS (
+    SELECT
+        DATA_DT,
+        FCY_ID,
+        SRC_STM_ID,
+        SYS_VLD_FROM_TMS AS DATE_FROM,
+        UNDRL_AR_ID AS AR_ID,
+        SYS_VLD_TO_TMS AS DATE_TO,
+        SRC_DL,
+        FCY_RK,
+        FCY_AR_TP,
+        COALESCE(HIGHER_FCY_RK, FCY_RK) AS HIGHER_FCY_RK,
+        COALESCE(HIGHEST_FCY_RK, FCY_RK) AS HIGHEST_FCY_RK,
+        CASE
+            WHEN HLEAF = 1 THEN 'Y'
+            WHEN HLEAF = 0 THEN 'N'
+            WHEN HIGHEST_FCY_IN_HRY = 'Y' THEN 'N'
+            ELSE 'Y'
+        END AS LOWEST_LVL_IND,
+        SPSDG_FCY_RK,
+        COURT_CTRLD_WRKOUT_FILL_DT,
+        COURT_CTRLD_WRKOUT_FCY,
+        OUT_OF_COURT_WRKOUT_FCY,
+        SPSDG_FCY_DT,
+        COURT_CTRLD_WRKOUT_CLS_DT,
+        CR_OBLG_DFLTD,
+        AR_IDENTN_NM AS FCY_VORTEX_ID,
+        timestamp_from_ustring(DSJobStartTimestamp) AS SYS_INRT_TMS
+    FROM
+        JNO_FCY_AR_LWST_HGHST
+)
+
+-- Final SELECT statement
+SELECT
+    DATA_DT,
+    FCY_ID,
+    SRC_STM_ID,
+    DATE_FROM,
+    AR_ID,
+    DATE_TO,
+    SRC_DL,
+    FCY_RK,
+    FCY_AR_TP,
+    HIGHER_FCY_RK,
+    HIGHEST_FCY_RK,
+    LOWEST_LVL_IND,
+    SPSDG_FCY_RK,
+    COURT_CTRLD_WRKOUT_FILL_DT,
+    COURT_CTRLD_WRKOUT_FCY,
+    OUT_OF_COURT_WRKOUT_FCY,
+    SPSDG_FCY_DT,
+    COURT_CTRLD_WRKOUT_CLS_DT,
+    CR_OBLG_DFLTD,
+    FCY_VORTEX_ID,
+    SYS_INRT_TMS
+FROM
+    ORA_write_EWM_MDM_STAGE_FACILITY;

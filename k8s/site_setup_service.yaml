@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-setup-service
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: site-setup-service
+  template:
+    metadata:
+      labels:
+        app: site-setup-service
+    spec:
+      containers:
+        - name: site-setup-service
+          image: site-setup-service:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: postgres://testuser:testpassword@postgres/testdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site-setup-service
+  namespace: default
+spec:
+  selector:
+    app: site-setup-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

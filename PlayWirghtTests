@@ -1,0 +1,117 @@
+import { test, expect } from '@playwright/test';
+
+test.describe('EPIC: Anomaly Detection in Timeseries Data', () => {
+  // URL of the dashboard
+  const dashboardUrl = 'http://localhost:3000/dashboard'; // Replace with actual dashboard URL
+
+  test('The dashboard displays time series plots with anomalies highlighted', async ({ page }) => {
+    // Given
+    // A robust machine learning model for anomaly detection in timeseries datasets is developed
+    // Data preprocessing is completed
+    // An interactive dashboard is created for users to view detected anomalies
+
+    // When
+    await page.goto(dashboardUrl);
+    // User views the dashboard
+
+    // Then
+    const anomalyPlots = await page.locator('[data-testid="anomaly-plot"]');
+    await expect(anomalyPlots).toHaveCountGreaterThan(0);
+    // Verify anomalies are highlighted in the plots
+    const highlightedAnomalies = await page.locator('[data-testid="highlighted-anomaly"]');
+    await expect(highlightedAnomalies).toHaveCountGreaterThan(0);
+  });
+
+  test('The dashboard shows detailed metrics and statistics', async ({ page }) => {
+    // Given
+    // A robust machine learning model for anomaly detection in timeseries datasets is developed
+    // Data preprocessing is completed
+    // An interactive dashboard is created for users to view detected anomalies
+
+    // When
+    await page.goto(dashboardUrl);
+    // User views the dashboard
+
+    // Then
+    const metrics = await page.locator('[data-testid="metrics"]');
+    const statistics = await page.locator('[data-testid="statistics"]');
+    await expect(metrics).toBeVisible();
+    await expect(statistics).toBeVisible();
+    // Optionally, verify content of metrics and statistics
+    await expect(metrics).toContainText('Expected Metric Value'); // Replace with actual expected value
+    await expect(statistics).toContainText('Expected Statistic Value'); // Replace with actual expected value
+  });
+
+  test('The filtered data is displayed according to user selection', async ({ page }) => {
+    // Given
+    // A robust machine learning model for anomaly detection in timeseries datasets is developed
+    // Data preprocessing is completed
+    // An interactive dashboard is created for users to view detected anomalies
+
+    // When
+    await page.goto(dashboardUrl);
+    await page.click('[data-testid="filter-button"]'); // Replace with actual filter button
+    await page.selectOption('[data-testid="filter-select"]', 'specific-filter'); // Replace with actual filter options
+    // User filters the data
+
+    // Then
+    const filteredData = await page.locator('[data-testid="filtered-data"]');
+    await expect(filteredData).toBeVisible();
+    // Optionally, verify content of filtered data
+    await expect(filteredData).toContainText('Expected Filtered Data'); // Replace with actual expected value
+  });
+
+  test('The exported data is available for further analysis or reporting', async ({ page }) => {
+    // Given
+    // A robust machine learning model for anomaly detection in timeseries datasets is developed
+    // Data preprocessing is completed
+    // An interactive dashboard is created for users to view detected anomalies
+
+    // When
+    await page.goto(dashboardUrl);
+    await page.click('[data-testid="export-button"]'); // Replace with actual export button
+    // User exports the data
+
+    // Then
+    const download = await page.waitForEvent('download');
+    const path = await download.path();
+    expect(path).not.toBeNull();
+    // Optionally, verify content of the exported file
+    const content = await download.saveAs('exported-data.csv');
+    expect(content).toContain('Expected Exported Data'); // Replace with actual expected value
+  });
+
+  test('The anomaly detection model provides clear indicators of when anomalies occur', async ({ page }) => {
+    // Given
+    // A robust machine learning model for anomaly detection in timeseries datasets is developed
+    // Data preprocessing is completed
+    // An interactive dashboard is created for users to view detected anomalies
+
+    // When
+    await page.goto(dashboardUrl);
+    // An anomaly is detected in the timeseries data
+
+    // Then
+    const anomalyIndicators = await page.locator('[data-testid="anomaly-indicator"]');
+    await expect(anomalyIndicators).toHaveCountGreaterThan(0);
+    // Optionally, verify content of anomaly indicators
+    await expect(anomalyIndicators).toContainText('Expected Anomaly Indicator'); // Replace with actual expected value
+  });
+
+  test('The scoring and visualization ensure effective anomaly management', async ({ page }) => {
+    // Given
+    // A robust machine learning model for anomaly detection in timeseries datasets is developed
+    // Data preprocessing is completed
+    // An interactive dashboard is created for users to view detected anomalies
+
+    // When
+    await page.goto(dashboardUrl);
+    // An anomaly is detected in the timeseries data
+
+    // Then
+    const anomalyManagement = await page.locator('[data-testid="anomaly-management"]');
+    await expect(anomalyManagement).toBeVisible();
+    // Optionally, verify content of anomaly management
+    await expect(anomalyManagement).toContainText('Expected Anomaly Management Content'); // Replace with actual expected value
+  });
+});
