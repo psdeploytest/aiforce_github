@@ -1,0 +1,4 @@
+Name,SSN,Expected Output
+John Doe,111-22-3333,"Realistic SSN, should trigger anonymize failure."
+Jane Smith,222-33-4444,"Another valid SSN format, expect failure."
+Anonymous User,XXX-XX-XXXX,"Already anonymized value, should pas"
